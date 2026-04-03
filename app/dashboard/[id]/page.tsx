@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { useWallet } from '@txnlab/use-wallet-react';
 import useSWR from 'swr';
 import { useState, useEffect } from 'react';
 import {
@@ -37,9 +37,10 @@ const DEFAULT_STABLECOIN = "0x1083D49aAB56502D4f4E24fFf52ce622D9B6eCd0";
 export default function AppDetails() {
     const { id } = useParams();
     const router = useRouter();
-    const { user, authenticated, login } = usePrivy();
-    const { wallets } = useWallets();
-    const wallet = wallets[0];
+    const { activeAccount, connected: authenticated } = useWallet();
+    const login = () => { /* Wallet UI handles connection */ };
+    const user = activeAccount ? { wallet: { address: activeAccount.address }, email: { address: '' } } : null;
+    const wallet = activeAccount; // For Algorand, activeAccount is the wallet context
 
     const [deploying, setDeploying] = useState(false);
     const [statusText, setStatusText] = useState('');

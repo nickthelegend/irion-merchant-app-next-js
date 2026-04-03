@@ -1,13 +1,14 @@
 'use client';
 
-import { usePrivy } from '@privy-io/react-auth';
+import { useWallet } from '@txnlab/use-wallet-react';
+import { WalletButton } from '@txnlab/use-wallet-ui-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Wallet, LogOut, LayoutDashboard, LayoutGrid, Zap } from 'lucide-react';
+import { LayoutDashboard, LayoutGrid, Zap } from 'lucide-react';
 
 export default function Header() {
-    const { login, logout, authenticated, user } = usePrivy();
+    const { activeAccount } = useWallet();
     const pathname = usePathname();
 
     if (pathname === '/shop') return null;
@@ -38,32 +39,10 @@ export default function Header() {
                     </nav>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    {authenticated ? (
-                        <div className="flex items-center gap-4">
-                            <div className="hidden lg:flex flex-col items-end">
-                                <span className="text-[10px] text-white/30 font-mono uppercase tracking-widest">
-                                    {user?.wallet?.address?.slice(0, 6)}...{user?.wallet?.address?.slice(-4)}
-                                </span>
-                            </div>
-                            <button
-                                onClick={() => logout()}
-                                className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-red-500/10 hover:border-red-500/50 hover:text-red-400 transition-all group"
-                                title="Disconnect"
-                            >
-                                <LogOut className="w-5 h-5" />
-                            </button>
-                        </div>
-                    ) : (
-                        <button
-                            onClick={() => login()}
-                            className="flex items-center gap-2 bg-primary text-black font-bold px-6 py-2.5 rounded-xl hover:scale-105 transition-all active:scale-95 shadow-[0_4px_20px_rgba(166,242,74,0.2)]"
-                        >
-                            <Wallet className="w-4 h-4" />
-                            Connect Wallet
-                        </button>
-                    )
-                    }
+                <div className="flex items-center gap-6">
+                    <div className="wui-custom-trigger">
+                        <WalletButton />
+                    </div>
                 </div>
             </div>
         </header>

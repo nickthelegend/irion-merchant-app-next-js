@@ -1,13 +1,16 @@
 'use client';
 
-import { usePrivy } from '@privy-io/react-auth';
+import { useWallet } from '@txnlab/use-wallet-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import useSWR, { mutate } from 'swr';
 import { Plus, Loader2, LayoutGrid, ArrowRight, Zap, Code2 } from 'lucide-react';
 
 export default function Dashboard() {
-    const { user, authenticated, login, ready } = usePrivy();
+    const { activeAccount, connected: authenticated } = useWallet();
+    const ready = true; // use-wallet-react is ready on mount
+    const login = () => { /* Wallet UI handles connection */ };
+    const user = activeAccount ? { wallet: { address: activeAccount.address }, email: { address: '' } } : null;
     const router = useRouter();
     const [isCreating, setIsCreating] = useState(false);
     const [newAppName, setNewAppName] = useState('');
