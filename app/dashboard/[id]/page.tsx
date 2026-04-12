@@ -21,15 +21,13 @@ import {
     Receipt,
     Wallet
 } from 'lucide-react';
-import { ethers } from 'ethers';
-import IrionMerchantEscrow from '@/lib/artifacts/contracts/IrionMerchantEscrow.sol/IrionMerchantEscrow.json';
+import { MerchantEscrowFactory } from '@/lib/algorand/clients/MerchantEscrowClient';
+import * as algokit from '@algorandfoundation/algokit-utils';
+import algosdk from 'algosdk';
 import WebhookManager from '@/components/WebhookManager';
-import { CONTRACTS } from '@/lib/constants';
+import { deployments } from '@/lib/algorand/client';
 
-const MERCHANT_ROUTER_ABI = [
-    "function merchantWithdraw(address token, uint256 amount, uint64 destChainId) external",
-    "function merchantBalances(address merchant, address token) view returns (uint256)"
-];
+
 
 // Mock USDC on Sepolia
 const DEFAULT_STABLECOIN = "0x1083D49aAB56502D4f4E24fFf52ce622D9B6eCd0";
@@ -37,54 +35,19 @@ const DEFAULT_STABLECOIN = "0x1083D49aAB56502D4f4E24fFf52ce622D9B6eCd0";
 export default function AppDetails() {
     const { id } = useParams();
     const router = useRouter();
-    const { activeAccount, connected: authenticated } = useWallet();
+    const { activeAddress } = useWallet();
+    const authenticated = !!activeAddress;
     const login = () => { /* Wallet UI handles connection */ };
-    const user = activeAccount ? { wallet: { address: activeAccount.address }, email: { address: '' } } : null;
-    const wallet = activeAccount; // For Algorand, activeAccount is the wallet context
+    const user = activeAddress ? { wallet: { address: activeAddress }, email: { address: '' } } : null;
+    const wallet = useWallet(); // For Algorand, activeAccount is the wallet context
 
-    const [deploying, setDeploying] = useState(false);
+    const [balance, setBalance] = useState('0.00');
+    const [withdrawing, setWithdrawing] = useState(false);
     const [statusText, setStatusText] = useState('');
     const [error, setError] = useState('');
+    const [deploying, setDeploying] = useState(false);
     const [logs, setLogs] = useState<any[]>([]);
     const [refreshingLogs, setRefreshingLogs] = useState(false);
-    const [withdrawing, setWithdrawing] = useState(false);
-    const [balance, setBalance] = useState('0.00');
-    const [routerWithdrawing, setRouterWithdrawing] = useState(false);
-    const [routerBalance, setRouterBalance] = useState('0.00');
-    const [currentChainId, setCurrentChainId] = useState<number | null>(null);
-
-    // Track current chain
-    useEffect(() => {
-        const checkChain = async () => {
-            if (!wallet) return;
-            try {
-                const provider = await wallet.getEthereumProvider();
-                const chainId = await provider.request({ method: 'eth_chainId' });
-                setCurrentChainId(parseInt(chainId as string, 16));
-            } catch (e) { }
-        };
-        checkChain();
-        // Listen for chain changes
-        if (wallet) {
-            wallet.getEthereumProvider().then((provider: any) => {
-                provider.on?.('chainChanged', (chainId: string) => {
-                    setCurrentChainId(parseInt(chainId, 16));
-                });
-            }).catch(() => { });
-        }
-    }, [wallet]);
-
-    const switchToSepolia = async () => {
-        if (!wallet) return;
-        try {
-            await wallet.switchChain(11155111);
-            setCurrentChainId(11155111);
-        } catch (e: any) {
-            setError('Failed to switch network. Please switch manually in your wallet.');
-        }
-    };
-
-    const isOnSepolia = currentChainId === 11155111;
 
     const { data, error: fetchError, mutate } = useSWR(
         authenticated && user?.wallet?.address ? `/api/apps/${id}` : null,
@@ -112,40 +75,24 @@ export default function AppDetails() {
     const fetchBalance = async () => {
         if (!app?.escrow_contract) return;
         try {
-            const provider = new ethers.JsonRpcProvider('https://1rpc.io/sepolia');
-            const abi = ["function balanceOf(address) view returns (uint256)"];
-            const usdc = new ethers.Contract(DEFAULT_STABLECOIN, abi, provider);
-            const bal = await usdc.balanceOf(app.escrow_contract);
-            setBalance(ethers.formatUnits(bal, 6));
+            // Hardcoded USDC ID for localnet
+            const USDC_ID = 1730;
+            const algod = algokit.getAlgoClient({ server: "http://localhost", port: 4001, token: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+            const appId = parseInt(app.escrow_contract);
+            const appAddress = algosdk.getApplicationAddress(BigInt(appId));
+            const accountInfo = await algod.accountAssetInformation(appAddress, USDC_ID).do();
+            if (accountInfo && accountInfo['asset-holding']) {
+               setBalance((Number(accountInfo['asset-holding'].amount) / 1000000).toFixed(2));
+            }
         } catch (e) {
             console.error('Failed to fetch balance:', e);
+            setBalance('0.00');
         }
     };
 
     const fetchLogs = async () => {
-        if (!app?.escrow_contract) return;
-        setRefreshingLogs(true);
-        try {
-            const provider = new ethers.JsonRpcProvider('https://1rpc.io/sepolia');
-            const contract = new ethers.Contract(app.escrow_contract, IrionMerchantEscrow.abi, provider);
-
-            const filter = contract.filters.PaymentSettled();
-            const events = await contract.queryFilter(filter, -10000); // Last 10k blocks
-
-            const formatted = events.map((e: any) => ({
-                payer: e.args[0],
-                amount: ethers.formatUnits(e.args[1], 18),
-                orderId: e.args[2],
-                details: e.args[3],
-                timestamp: new Date(Number(e.args[4]) * 1000).toLocaleString()
-            }));
-
-            setLogs(formatted.reverse());
-        } catch (e) {
-            console.error('Failed to fetch logs:', e);
-        } finally {
-            setRefreshingLogs(false);
-        }
+        // Not implemented for Algorand yet
+        setLogs([]);
     };
 
     useEffect(() => {
@@ -160,170 +107,62 @@ export default function AppDetails() {
         }
     }, [app?.escrow_contract]);
 
-    const fetchRouterBalance = async () => {
-        if (!user?.wallet?.address) return;
-        try {
-            // Use direct Sepolia RPC — no wallet provider needed for reads
-            const provider = new ethers.JsonRpcProvider('https://1rpc.io/sepolia');
-            const router = new ethers.Contract(CONTRACTS.MASTER.MERCHANT_ROUTER, MERCHANT_ROUTER_ABI, provider);
-
-            let totalBal = BigInt(0);
-
-            // Check balance on merchant's Privy wallet
-            try {
-                const walletBal = await router.merchantBalances(user.wallet.address, DEFAULT_STABLECOIN);
-                totalBal += walletBal;
-            } catch {}
-
-            // Check balance on escrow contract address
-            if (app?.escrow_contract && app.escrow_contract !== '0x0000000000000000000000000000000000000000') {
-                try {
-                    const escrowBal = await router.merchantBalances(app.escrow_contract, DEFAULT_STABLECOIN);
-                    totalBal += escrowBal;
-                } catch {}
-            }
-
-            // Also check the wallet_address stored on the app record
-            if (app?.wallet_address && app.wallet_address.toLowerCase() !== (user.wallet.address || '').toLowerCase()) {
-                try {
-                    const appWalletBal = await router.merchantBalances(app.wallet_address, DEFAULT_STABLECOIN);
-                    totalBal += appWalletBal;
-                } catch {}
-            }
-
-            setRouterBalance(ethers.formatUnits(totalBal, 6));
-        } catch (e) {
-            console.error('Failed to fetch router balance:', e);
-        }
-    };
-
     useEffect(() => {
-        if (user?.wallet?.address && app) {
-            fetchRouterBalance();
-            const int = setInterval(fetchRouterBalance, 15000);
+        if (app?.escrow_contract) {
+            fetchLogs();
+            fetchBalance();
+            const int = setInterval(() => {
+                fetchLogs();
+                fetchBalance();
+            }, 15000);
             return () => clearInterval(int);
         }
-    }, [user?.wallet?.address, app]);
+    }, [app?.escrow_contract]);
 
-    const handleRouterWithdraw = async () => {
-        if (!wallet) return;
-        setRouterWithdrawing(true);
-        setError('');
-        try {
-            const externalProvider = await wallet.getEthereumProvider();
-            const provider = new ethers.BrowserProvider(externalProvider);
-            const signer = await provider.getSigner();
-            const router = new ethers.Contract(CONTRACTS.MASTER.MERCHANT_ROUTER, MERCHANT_ROUTER_ABI, signer);
+    const handleRouterWithdraw = async () => {};
 
-            const signerAddress = await signer.getAddress();
-            
-            // 1. Check signer balance
-            const signerBal = await router.merchantBalances(signerAddress, DEFAULT_STABLECOIN);
-            
-            // 2. Check escrow balance
-            let escrowBal = BigInt(0);
-            if (app?.escrow_contract) {
-                escrowBal = await router.merchantBalances(app.escrow_contract, DEFAULT_STABLECOIN);
-            }
-
-            if (signerBal === BigInt(0) && escrowBal === BigInt(0)) {
-                setError('No funds available for withdrawal in MerchantRouter');
-                return;
-            }
-
-            setStatusText('Initiating withdrawal sequence...');
-
-            // Withdraw from Signer if balance exists
-            if (signerBal > BigInt(0)) {
-                console.log('Withdrawing from Signer address...');
-                const tx = await router.merchantWithdraw(DEFAULT_STABLECOIN, signerBal, 11155111);
-                await tx.wait();
-                console.log('Signer withdrawal complete');
-            }
-
-            // Withdraw from Escrow if balance exists
-            if (escrowBal > BigInt(0) && app?.escrow_contract) {
-                // Escrow balance is credited on-chain to the escrow contract address.
-                // It can only be withdrawn by the escrow contract itself.
-                // For now, show it as available but note it requires escrow support.
-                console.log('Escrow has', ethers.formatUnits(escrowBal, 6), 'USDC on MerchantRouter (auto-settled)');
-                setStatusText('Escrow funds settled on-chain (' + ethers.formatUnits(escrowBal, 6) + ' USDC)');
-            }
-
-            fetchRouterBalance();
-            setStatusText('Withdrawal successful!');
-            setTimeout(() => setStatusText(''), 3000);
-        } catch (e: any) {
-            console.error(e);
-            setError(e.message || 'Router withdrawal failed');
-        } finally {
-            setRouterWithdrawing(false);
-        }
-    };
-
-    const handleWithdraw = async () => {
-        if (!wallet || !app?.escrow_contract) return;
+    const handleFulfillOrder = async (loanId: number) => {
+        if (!wallet.activeAddress) return;
         setWithdrawing(true);
         setError('');
         try {
-            const externalProvider = await wallet.getEthereumProvider();
-            const provider = new ethers.BrowserProvider(externalProvider);
-            const signer = await provider.getSigner();
-            const contract = new ethers.Contract(app.escrow_contract, IrionMerchantEscrow.abi, signer);
-
-            const tx = await contract.withdraw();
-            setStatusText('Withdrawing funds...');
-            await tx.wait();
+            const algod = algokit.getAlgoClient({ server: "http://localhost", port: 4001, token: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+            const algorand = algokit.AlgorandClient.fromClients({ algod });
+            const factory = new MerchantEscrowFactory({ algorand, defaultSender: wallet.activeAddress! });
+            const client = factory.getAppClientById({ appId: BigInt(deployments.merchant_escrow_app_id) });
+            
+            setStatusText('Releasing funds from Escrow...');
+            await client.send.releaseToMerchant({ args: { loanId: BigInt(loanId) } });
 
             fetchBalance();
-            setStatusText('Withdrawal successful!');
+            mutateTx();
+            setStatusText('Fulfillment complete!');
             setTimeout(() => setStatusText(''), 3000);
         } catch (e: any) {
             console.error(e);
-            setError(e.message || 'Withdrawal failed');
+            setError(e.message || 'Fulfillment failed');
         } finally {
             setWithdrawing(false);
         }
     };
 
+    const handleWithdraw = async () => {};
+
     const handleDeployEscrow = async () => {
-        if (!wallet) return;
+        if (!wallet.activeAddress) return;
         setDeploying(true);
-        setStatusText('Switching to Sepolia...');
         setError('');
 
         try {
-            // Force switch to Sepolia before deploying
-            await wallet.switchChain(11155111);
-
-            const externalProvider = await wallet.getEthereumProvider();
-            const provider = new ethers.BrowserProvider(externalProvider);
-            const signer = await provider.getSigner();
-
-            // Verify we're on Sepolia
-            const network = await provider.getNetwork();
-            if (Number(network.chainId) !== 11155111) {
-                throw new Error('Please switch to Sepolia network in your wallet');
-            }
-
-            setStatusText('Deploying Escrow Contract on Sepolia...');
-            const factory = new ethers.ContractFactory(
-                IrionMerchantEscrow.abi,
-                IrionMerchantEscrow.bytecode,
-                signer
-            );
-
-            const contract = await factory.deploy(DEFAULT_STABLECOIN);
-            setStatusText(`Waiting for confirmation...`);
-            await contract.waitForDeployment();
-            const address = await contract.getAddress();
+            setStatusText('Configuring Escrow...');
+            const address = deployments.merchant_escrow_app_id.toString();
 
             setStatusText('Saving to database...');
             const res = await fetch(`/api/apps/${id}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-wallet-address': user?.wallet?.address || ''
+                    'x-wallet-address': wallet.activeAddress
                 },
                 body: JSON.stringify({ escrow_contract: address })
             });
@@ -335,7 +174,7 @@ export default function AppDetails() {
             setTimeout(() => setStatusText(''), 3000);
         } catch (e: any) {
             console.error(e);
-            setError(e.message || 'Deployment failed');
+            setError(e.message || 'Configuration failed');
         } finally {
             setDeploying(false);
         }
@@ -412,35 +251,8 @@ export default function AppDetails() {
                 </div>
             </header>
 
-            {/* Sepolia Network Banner */}
-            {currentChainId !== null && !isOnSepolia && (
-                <div className="max-w-4xl mx-auto mb-6">
-                    <div className="flex items-center justify-between bg-red-500/10 border border-red-500/30 rounded-xl px-5 py-3">
-                        <div className="flex items-center gap-3">
-                            <AlertCircle className="w-5 h-5 text-red-400" />
-                            <div>
-                                <p className="text-sm font-bold text-red-400">Wrong Network</p>
-                                <p className="text-[10px] text-red-400/60">You are on chain {currentChainId}. Irion requires Sepolia (11155111).</p>
-                            </div>
-                        </div>
-                        <button
-                            onClick={switchToSepolia}
-                            className="bg-primary text-black px-5 py-2 rounded-lg font-black text-[10px] uppercase tracking-tighter hover:scale-105 transition-all shadow-md shadow-primary/20"
-                        >
-                            Switch to Sepolia
-                        </button>
-                    </div>
-                </div>
-            )}
 
-            {currentChainId !== null && isOnSepolia && (
-                <div className="max-w-4xl mx-auto mb-6">
-                    <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-xl px-5 py-2">
-                        <CheckCircle2 className="w-4 h-4 text-green-400" />
-                        <p className="text-[10px] text-green-400 font-bold uppercase tracking-wider">Connected to Ethereum Sepolia</p>
-                    </div>
-                </div>
-            )}
+
 
             <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
                 {/* Left Column: API Keys */}
@@ -595,7 +407,8 @@ window.location.href = checkoutUrl;`}
                                             <th className="text-[10px] uppercase text-white/40 font-bold pb-3 pr-4">Asset</th>
                                             <th className="text-[10px] uppercase text-white/40 font-bold pb-3 pr-4">Status</th>
                                             <th className="text-[10px] uppercase text-white/40 font-bold pb-3 pr-4">Payment Mode</th>
-                                            <th className="text-[10px] uppercase text-white/40 font-bold pb-3">Date</th>
+                                            <th className="text-[10px] uppercase text-white/40 font-bold pb-3 pr-4">Date</th>
+                                            <th className="text-[10px] uppercase text-white/40 font-bold pb-3">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -613,10 +426,20 @@ window.location.href = checkoutUrl;`}
                                                     </span>
                                                 </td>
                                                 <td className="py-3 pr-4 text-xs text-white/60">{tx.payment_mode || '—'}</td>
-                                                <td className="py-3 text-xs text-white/40">
+                                                <td className="py-3 pr-4 text-xs text-white/40">
                                                     {tx.paid_at
                                                         ? new Date(tx.paid_at).toLocaleDateString()
                                                         : new Date(tx.created_at).toLocaleDateString()}
+                                                </td>
+                                                <td className="py-3">
+                                                    {tx.status === 'paid' && tx.payment_mode === 'bnpl' && tx.loan_id && (
+                                                        <button
+                                                            onClick={() => handleFulfillOrder(tx.loan_id)}
+                                                            className="bg-primary/20 text-primary border border-primary/30 px-3 py-1 rounded text-xs hover:bg-primary/30 transition-colors uppercase font-bold"
+                                                        >
+                                                            Fulfill
+                                                        </button>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}
@@ -666,7 +489,7 @@ window.location.href = checkoutUrl;`}
                                     </button>
                                 </div>
                                 <p className="text-[10px] text-white/30 leading-relaxed italic">
-                                    Your escrow is active on Ethereum Sepolia. Payments will be routed here.
+                                    Your escrow is active on Algorand Localnet. Payments will be routed here.
                                 </p>
                             </div>
                         ) : (
@@ -697,7 +520,7 @@ window.location.href = checkoutUrl;`}
                                         'Deploy Escrow'
                                     )}
                                 </button>
-                                <p className="text-[9px] text-white/20 text-center uppercase tracking-widest font-bold">Gas fee: ~0.005 ETH</p>
+                                <p className="text-[9px] text-white/20 text-center uppercase tracking-widest font-bold">Network fee: ~0.001 ALGO</p>
                             </div>
                         )}
                     </section>
@@ -710,42 +533,15 @@ window.location.href = checkoutUrl;`}
                         <div className="space-y-3">
                             <div className="flex justify-between text-[11px]">
                                 <span className="text-white/30">Network</span>
-                                <span className="text-white/60 font-bold">Ethereum Sepolia</span>
+                                <span className="text-white/60 font-bold">Algorand Localnet</span>
                             </div>
                             <div className="flex justify-between text-[11px]">
                                 <span className="text-white/30">Currency</span>
-                                <span className="text-white/60 font-bold">USDC (Mock)</span>
-                            </div>
-                            <div className="flex justify-between text-[11px]">
-                                <span className="text-white/30">Chain ID</span>
-                                <span className="text-white/60 font-bold">11155111</span>
+                                <span className="text-white/60 font-bold">USDC (Local)</span>
                             </div>
                         </div>
                     </section>
 
-                    {/* MerchantRouter Withdrawal */}
-                    <section className="bg-white/[0.03] border border-white/10 rounded-2xl p-6 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-teal-500/10 blur-3xl -mr-12 -mt-12" />
-
-                        <div className="flex items-center gap-2 mb-4">
-                            <Wallet className="w-5 h-5 text-primary" />
-                            <h2 className="text-lg font-bold">Credit Settlement</h2>
-                        </div>
-
-                        <p className="text-[10px] text-white/40 mb-4 leading-relaxed">
-                            Funds received via BNPL and Split-in-3 payments through the MerchantRouter contract.
-                        </p>
-
-                        <div className="bg-primary/5 border border-primary/10 rounded-xl p-4 mb-3">
-                            <div className="text-[9px] uppercase font-bold text-primary/50 mb-1">Total Settled</div>
-                            <div className="text-2xl font-bold text-white">{routerBalance} <span className="text-sm text-white/40">USDC</span></div>
-                            <p className="text-[9px] text-white/20 mt-2">On-chain balance from BNPL &amp; Split-in-3 credit payments</p>
-                        </div>
-
-                        {parseFloat(routerBalance) === 0 && (
-                            <p className="text-[10px] text-white/20 italic text-center">No funds available for withdrawal</p>
-                        )}
-                    </section>
                 </div>
             </main>
         </div>

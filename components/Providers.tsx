@@ -1,4 +1,5 @@
 'use client';
+import { ReactNode } from 'react';
 
 import { NetworkId, WalletId, WalletManager, WalletProvider } from '@txnlab/use-wallet-react'
 import { WalletUIProvider } from '@txnlab/use-wallet-ui-react'

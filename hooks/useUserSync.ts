@@ -1,19 +1,18 @@
-import { usePrivy } from '@privy-io/react-auth';
+import { useWallet } from '@txnlab/use-wallet-react';
 import { useEffect } from 'react';
 
 export function useUserSync() {
-    const { user, authenticated } = usePrivy();
+    const { activeAddress } = useWallet();
 
     useEffect(() => {
         async function syncUser() {
-            if (authenticated && user?.wallet?.address) {
+            if (activeAddress) {
                 try {
                     await fetch('/api/auth/sync', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            wallet_address: user.wallet.address,
-                            email: user.email?.address || null,
+                            wallet_address: activeAddress,
                         }),
                     });
                 } catch (err) {
@@ -23,5 +22,5 @@ export function useUserSync() {
         }
 
         syncUser();
-    }, [authenticated, user]);
+    }, [activeAddress]);
 }

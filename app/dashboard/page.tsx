@@ -7,10 +7,11 @@ import useSWR, { mutate } from 'swr';
 import { Plus, Loader2, LayoutGrid, ArrowRight, Zap, Code2 } from 'lucide-react';
 
 export default function Dashboard() {
-    const { activeAccount, connected: authenticated } = useWallet();
+    const { activeAddress } = useWallet();
+    const authenticated = !!activeAddress;
     const ready = true; // use-wallet-react is ready on mount
     const login = () => { /* Wallet UI handles connection */ };
-    const user = activeAccount ? { wallet: { address: activeAccount.address }, email: { address: '' } } : null;
+    const user = activeAddress ? { wallet: { address: activeAddress }, email: { address: '' } } : null;
     const router = useRouter();
     const [isCreating, setIsCreating] = useState(false);
     const [newAppName, setNewAppName] = useState('');
@@ -18,16 +19,16 @@ export default function Dashboard() {
 
     // 1. Sync User on Auth
     useEffect(() => {
-        if (authenticated && user?.wallet?.address) {
+        if (authenticated && activeAddress) {
             fetch('/api/auth/sync', {
                 method: 'POST',
                 body: JSON.stringify({
-                    wallet_address: user.wallet.address,
-                    email: user.email?.address
+                    wallet_address: activeAddress,
+                    email: ''
                 })
             }).catch(console.error);
         }
-    }, [authenticated, user]);
+    }, [authenticated, activeAddress]);
 
     // 2. Fetch Apps
     const { data: appsData, error, isLoading } = useSWR(
