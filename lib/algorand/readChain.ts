@@ -1,4 +1,4 @@
-import { algodClient, deployments, getCreditScoreClient, getLendingPoolClient, getBNPLCreditClient } from './client'
+import { algodClient, deployments, getCreditScoreClient, getLendingPoolClient, getBNPLCreditClient, getMerchantEscrowClient } from './client'
 
 // Read credit profile for a wallet address from chain
 export async function fetchCreditProfileFromChain(address: string) {
@@ -64,4 +64,15 @@ export async function fetchLoan(loan_id: number) {
   const client = getBNPLCreditClient()
   const result = await client.send.getLoan({ args: [BigInt(loan_id)] })
   return result.return
+}
+
+// Read escrow state for an order
+export async function fetchEscrow(loan_id: number) {
+  const client = getMerchantEscrowClient()
+  try {
+    const result = await client.send.getEscrow({ args: [BigInt(loan_id)] })
+    return result.return
+  } catch {
+    return null
+  }
 }

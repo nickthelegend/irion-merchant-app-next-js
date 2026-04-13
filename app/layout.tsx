@@ -2,6 +2,7 @@ import './globals.css';
 import { Space_Grotesk, JetBrains_Mono } from 'next/font/google';
 import Providers from '@/components/Providers';
 import Header from '@/components/Header';
+import { Toaster } from 'sonner';
 
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-sans' });
 const jetBrainsMono = JetBrains_Mono({
@@ -28,6 +29,7 @@ export default function RootLayout({
           <main className="pt-20">
             {children}
           </main>
+          <Toaster position="bottom-right" theme="dark" />
         </Providers>
       </body>
     </html>

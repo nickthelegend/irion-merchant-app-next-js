@@ -3,10 +3,15 @@
 
 import { useState } from "react"
 import { Search, Filter, ArrowUpRight, CheckCircle2, XCircle, Clock, ExternalLink, Loader2, DollarSign, ShieldCheck } from "lucide-react"
+import { useWallet } from "@txnlab/use-wallet-react"
+import { toast } from "sonner"
+import { getMerchantEscrowClient } from "@/lib/algorand/client"
 
 export default function MerchantOrders() {
+  const { activeAddress } = useWallet()
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
+  const [releaseOrderId, setReleaseOrderId] = useState("")
   
   const orders = [
     { id: "ORD-9284-A", borrower: "LJ5N...4IU", amount: "1,200 USDC", status: "In Escrow", date: "2026-04-12", delivery: "Pending" },
@@ -29,6 +34,24 @@ export default function MerchantOrders() {
       case "Released": return <CheckCircle2 size={12} />;
       case "Disputed": return <XCircle size={12} />;
       default: return null;
+    }
+  }
+
+  const handleRelease = async () => {
+    if (!releaseOrderId || !activeAddress) {
+      toast.error("Please enter Order ID and connect wallet")
+      return
+    }
+    setLoading(true)
+    try {
+      const client = getMerchantEscrowClient(activeAddress)
+      const result = await client.send.releaseToMerchant({ args: [BigInt(releaseOrderId)] })
+      toast.success(`Funds released! TX: ${result.transaction.txID().slice(0, 8)}...`)
+      setReleaseOrderId("")
+    } catch (err: any) {
+      toast.error(err.message || "Release failed")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -109,10 +132,13 @@ export default function MerchantOrders() {
               
               <div className="space-y-3">
                  <input 
+                   value={releaseOrderId}
+                   onChange={e => setReleaseOrderId(e.target.value)}
                    placeholder="ENTER_ORDER_ID" 
-                   className="w-full bg-white/5 border border-white/5 rounded-xl p-3 text-xs focus:outline-none focus:border-primary/40 uppercase font-bold"
+                   className="w-full bg-white/5 border border-white/5 rounded-xl p-3 text-xs focus:outline-none focus:border-primary/40 uppercase font-bold text-white"
                  />
                  <button 
+                   onClick={handleRelease}
                    disabled={loading}
                    className="w-full py-4 rounded-xl bg-white text-black font-black text-[11px] uppercase tracking-widest hover:bg-[#00ca96] hover:text-black transition-all flex items-center justify-center gap-2"
                  >
@@ -135,3 +161,4 @@ export default function MerchantOrders() {
     </div>
   )
 }
+
