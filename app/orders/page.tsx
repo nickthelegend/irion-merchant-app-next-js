@@ -39,21 +39,27 @@ export default function MerchantOrders() {
 
   const handleRelease = async () => {
     if (!releaseOrderId || !activeAddress) {
+      console.log("[IRION-DEBUG] Release Attempt Blocked:", { releaseOrderId, activeAddress })
       toast.error("Please enter Order ID and connect wallet")
       return
     }
     setLoading(true)
+    console.log("[IRION-DEBUG] Attempting Manual Release for Order ID:", releaseOrderId)
+    
     try {
       const client = getMerchantEscrowClient(activeAddress)
       const result = await client.send.releaseToMerchant({ args: [BigInt(releaseOrderId)] })
+      console.log("[IRION-DEBUG] Manual Release Success TX:", result.transaction.txID())
       toast.success(`Funds released! TX: ${result.transaction.txID().slice(0, 8)}...`)
       setReleaseOrderId("")
     } catch (err: any) {
+      console.error("[IRION-DEBUG] Manual Release Error:", err)
       toast.error(err.message || "Release failed")
     } finally {
       setLoading(false)
     }
   }
+
 
   return (
     <div className="flex-1 space-y-8 py-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
