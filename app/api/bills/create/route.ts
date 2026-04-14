@@ -2,19 +2,49 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getDb } from "@/lib/mongodb";
 
+// Handle CORS preflight
+export async function OPTIONS(req: Request) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, x-client-id, x-client-secret',
+    },
+  });
+}
+
 export async function POST(req: Request) {
   const clientId = req.headers.get("x-client-id");
   const clientSecret = req.headers.get("x-client-secret");
+
+  console.log('[MERCHANT-DEBUG] Received request headers:', { clientId, clientSecret: clientSecret?.substring(0, 10) + '...' });
 
   if (!clientId || !clientSecret) {
     return NextResponse.json({ error: "Missing Client Auth Headers (x-client-id, x-client-secret)" }, { status: 401 });
   }
 
-  const body = await req.json().catch(() => ({}));
+  let body;
+  try {
+    body = await req.json();
+    console.log('[MERCHANT-DEBUG] Received request body:', body);
+  } catch (e) {
+    console.log('[MERCHANT-DEBUG] Failed to parse body:', e);
+    body = {};
+  }
+  
   const { amount, description, metadata, asset = "USDC" } = body;
 
-  if (!amount) {
+  console.log('[MERCHANT-DEBUG] Extracted values:', { amount, description, asset });
+
+  if (amount === undefined || amount === null) {
+    console.log('[MERCHANT-DEBUG] Amount is missing! Returning error.');
     return NextResponse.json({ error: "Amount is required" }, { status: 400 });
+  }
+
+  if (parseFloat(amount) <= 0) {
+    console.log('[MERCHANT-DEBUG] Amount is 0 or negative! Returning error.');
+    return NextResponse.json({ error: "Amount must be greater than 0" }, { status: 400 });
   }
 
   const db = await getDb();
