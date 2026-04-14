@@ -6,8 +6,16 @@ import { WalletUIProvider } from '@txnlab/use-wallet-ui-react'
 import '@txnlab/use-wallet-ui-react/dist/style.css'
 
 const walletManager = new WalletManager({
-    wallets: [WalletId.PERA, WalletId.DEFLY, WalletId.LUTE],
-    defaultNetwork: NetworkId.TESTNET,
+    wallets: [
+        WalletId.PERA,
+        WalletId.DEFLY,
+        {
+            id: WalletId.LUTE,
+            options: { siteName: 'Irion Merchant' }
+        },
+        WalletId.KIBISIS
+    ],
+    defaultNetwork: NetworkId.LOCALNET,
 })
 
 export default function Providers({ children }: { children: ReactNode }) {
