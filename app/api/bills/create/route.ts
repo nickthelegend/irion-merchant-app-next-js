@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     created_at: new Date(),
   });
 
-  const coreUrl = process.env.Irion_CORE_URL || "http://localhost:3000";
+  const coreUrl = process.env.Irion_CORE_URL || "https://app.irion.network";
   return NextResponse.json({
     billId: result.insertedId,
     billHash,
