@@ -29,8 +29,8 @@ import { deployments } from '@/lib/algorand/client';
 
 
 
-// Mock USDC on Sepolia
-const DEFAULT_STABLECOIN = "0x1083D49aAB56502D4f4E24fFf52ce622D9B6eCd0";
+// Algorand Testnet USDC Asset ID
+const USDC_ID = process.env.NEXT_PUBLIC_USDC_ASSET_ID ? parseInt(process.env.NEXT_PUBLIC_USDC_ASSET_ID) : 10458941;
 
 export default function AppDetails() {
     const { id } = useParams();
@@ -75,12 +75,15 @@ export default function AppDetails() {
     const fetchBalance = async () => {
         if (!app?.escrow_contract) return;
         try {
-            // Hardcoded USDC ID for localnet
-            const USDC_ID = 1730;
-            const algod = algokit.getAlgoClient({ server: "http://localhost", port: 4001, token: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+            const algod = algokit.getAlgoClient({
+                server: process.env.NEXT_PUBLIC_ALGOD_SERVER || 'https://testnet-api.algonode.cloud',
+                port: process.env.NEXT_PUBLIC_ALGOD_PORT || '443',
+                token: process.env.NEXT_PUBLIC_ALGOD_TOKEN || ''
+            });
+            const assetId = process.env.NEXT_PUBLIC_USDC_ASSET_ID ? parseInt(process.env.NEXT_PUBLIC_USDC_ASSET_ID) : 10458941;
             const appId = parseInt(app.escrow_contract);
             const appAddress = algosdk.getApplicationAddress(BigInt(appId));
-            const accountInfo = await algod.accountAssetInformation(appAddress, USDC_ID).do();
+            const accountInfo = await algod.accountAssetInformation(appAddress, assetId).do();
             if (accountInfo && accountInfo['asset-holding']) {
                setBalance((Number(accountInfo['asset-holding'].amount) / 1000000).toFixed(2));
             }
@@ -126,10 +129,14 @@ export default function AppDetails() {
         setWithdrawing(true);
         setError('');
         try {
-            const algod = algokit.getAlgoClient({ server: "http://localhost", port: 4001, token: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+            const algod = algokit.getAlgoClient({
+                server: process.env.NEXT_PUBLIC_ALGOD_SERVER || 'https://testnet-api.algonode.cloud',
+                port: process.env.NEXT_PUBLIC_ALGOD_PORT || '443',
+                token: process.env.NEXT_PUBLIC_ALGOD_TOKEN || ''
+            });
             const algorand = algokit.AlgorandClient.fromClients({ algod });
             const factory = new MerchantEscrowFactory({ algorand, defaultSender: wallet.activeAddress! });
-            const client = factory.getAppClientById({ appId: BigInt(deployments.merchant_escrow_app_id) });
+            const client = factory.getAppClientById({ appId: BigInt(app.escrow_contract) });
             
             setStatusText('Releasing funds from Escrow...');
             await client.send.releaseToMerchant({ args: { loanId: BigInt(loanId) } });
@@ -308,7 +315,7 @@ export default function AppDetails() {
                             </div>
                             <pre className="p-6 text-xs text-teal-100/70 overflow-x-auto leading-relaxed">
                                 {`// 1. Create a Bill via API
-const res = await fetch('https://Irion.link/api/bills/create', {
+const res = await fetch('https://irion.network/api/bills/create', {
   method: 'POST',
   headers: {
     'x-client-id': '${app.client_id}',
@@ -470,7 +477,7 @@ window.location.href = checkoutUrl;`}
                                     <label className="text-[9px] uppercase text-white/30 block mb-1">Contract Address</label>
                                     <div className="flex items-center justify-between gap-1">
                                         <code className="text-[10px] text-white/60 truncate">{app.escrow_contract}</code>
-                                        <a href={`https://sepolia.etherscan.io/address/${app.escrow_contract}`} target="_blank" className="text-primary hover:text-white">
+                                        <a href={`https://testnet.explorer.perawallet.app/application/${app.escrow_contract}`} target="_blank" className="text-primary hover:text-white">
                                             <ExternalLink className="w-3 h-3" />
                                         </a>
                                     </div>
@@ -489,7 +496,7 @@ window.location.href = checkoutUrl;`}
                                     </button>
                                 </div>
                                 <p className="text-[10px] text-white/30 leading-relaxed italic">
-                                    Your escrow is active on Algorand Localnet. Payments will be routed here.
+                                    Your escrow is active on Algorand Testnet. Payments will be routed here.
                                 </p>
                             </div>
                         ) : (
@@ -533,11 +540,11 @@ window.location.href = checkoutUrl;`}
                         <div className="space-y-3">
                             <div className="flex justify-between text-[11px]">
                                 <span className="text-white/30">Network</span>
-                                <span className="text-white/60 font-bold">Algorand Localnet</span>
+                                <span className="text-white/60 font-bold">Algorand Testnet</span>
                             </div>
                             <div className="flex justify-between text-[11px]">
                                 <span className="text-white/30">Currency</span>
-                                <span className="text-white/60 font-bold">USDC (Local)</span>
+                                <span className="text-white/60 font-bold">USDC (Testnet)</span>
                             </div>
                         </div>
                     </section>

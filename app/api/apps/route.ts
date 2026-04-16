@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
             category: category || '',
             client_id,
             client_secret,
-            network: 'sepolia',
+            network: 'testnet',
             status: 'active',
             created_at: new Date(),
             updated_at: new Date()
